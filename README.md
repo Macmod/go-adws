@@ -40,7 +40,7 @@ Contributions are welcome by [opening an issue](https://github.com/Macmod/go-adw
 
 # Acknowledgements
 
-* Big thanks to [oiweiwei](https://github.com/oiweiwei) for [go-msrpc](https://github.com/oiweiwei/go-msrpc), as his `ssp` package implementated the authentication flow with GSSAPI seamlessly.
+* Big thanks to [oiweiwei](https://github.com/oiweiwei) for [go-msrpc](https://github.com/oiweiwei/go-msrpc), as his `ssp` package implemented the authentication flow with GSSAPI seamlessly.
 
 # References
 
