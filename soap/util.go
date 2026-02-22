@@ -73,8 +73,6 @@ const (
 	DialectLdapQuery   = "http://schemas.microsoft.com/2008/1/ActiveDirectory/Dialect/LdapQuery"
 )
 
-const ()
-
 func ScopeToString(scope int) string {
 	switch scope {
 	case 0:
