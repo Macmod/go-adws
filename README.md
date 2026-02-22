@@ -6,7 +6,6 @@
     <img src="https://img.shields.io/github/go-mod/go-version/Macmod/go-adws" alt="Go Version">
     <img src="https://img.shields.io/github/languages/code-size/Macmod/go-adws" alt="Code Size">
     <img src="https://img.shields.io/github/license/Macmod/go-adws" alt="License">
-    <img src="https://img.shields.io/github/actions/workflow/status/Macmod/go-adws/release.yml" alt="Build Status">
     <a href="https://goreportcard.com/report/github.com/Macmod/go-adws"><img src="https://goreportcard.com/badge/github.com/Macmod/go-adws" alt="Go Report Card"></a>
     <img src="https://img.shields.io/github/downloads/Macmod/go-adws/total" alt="GitHub Downloads">
     <a href="https://twitter.com/MacmodSec"><img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/MacmodSec?style=for-the-badge&logo=X&color=blue"></a>
