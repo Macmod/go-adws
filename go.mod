@@ -5,7 +5,7 @@ go 1.24.1
 require (
 	github.com/RedTeamPentesting/adauth v0.5.3
 	github.com/jcmturner/gokrb5/v8 v8.4.4
-	github.com/oiweiwei/go-msrpc v1.2.15
+	github.com/oiweiwei/go-msrpc v1.2.16
 	github.com/oiweiwei/gokrb5.fork/v9 v9.0.6
 	golang.org/x/crypto v0.48.0
 )
