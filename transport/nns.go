@@ -52,7 +52,7 @@ const (
 	CredentialPassword CredentialType = iota
 	// NTLM hash authentication (hex-encoded MD4 of password)
 	CredentialNTHash
-	// Kerberos credential cache (ccache file path or from KRB5_CCACHE env)
+	// Kerberos credential cache (ccache file path or from KRB5CCNAME env)
 	CredentialCCache
 	// Anonymous authentication (empty credentials)
 	CredentialAnonymous
@@ -83,7 +83,7 @@ type NNSConnection struct {
 	password       string            // For CredentialPassword
 	ntHash         string            // For CredentialNTHash (hex-encoded)
 	aesKey         string            // For CredentialAESKey (hex-encoded AES-128 or AES-256)
-	ccachePath     string            // For CredentialCCache (optional, uses KRB5_CCACHE if empty)
+	ccachePath     string            // For CredentialCCache (optional, uses KRB5CCNAME if empty)
 	cert           *x509.Certificate // For CredentialClientCert
 	key            *rsa.PrivateKey   // For CredentialClientCert
 
@@ -146,7 +146,7 @@ func NewNNSConnectionWithAESKey(conn net.Conn, domain, username, aesKey, targetS
 }
 
 // NewNNSConnectionWithCCache creates a new NNS connection using Kerberos credential cache.
-// ccachePath can be empty to use the KRB5_CCACHE environment variable.
+// ccachePath can be empty to use the KRB5CCNAME environment variable.
 func NewNNSConnectionWithCCache(conn net.Conn, domain, username, ccachePath, targetSPN string, protectionLevel ProtectionLevel) *NNSConnection {
 	return &NNSConnection{
 		conn:            conn,
@@ -201,10 +201,10 @@ func NewNNSConnectionAnonymous(conn net.Conn, targetSPN string, useKerberos bool
 //   - If useKerberos = true: SPNEGO with Kerberos-only
 //
 // Flow:
-//   1. Initialize GSS-API security context with credentials and mechanisms
-//   2. Client → Server: InitSecContext() → HandshakeInProgress
-//   3. Server → Client: AcceptSecContext() → HandshakeInProgress or HandshakeDone
-//   4. [Optional] Client → Server: Continue until HandshakeDone
+//  1. Initialize GSS-API security context with credentials and mechanisms
+//  2. Client → Server: InitSecContext() → HandshakeInProgress
+//  3. Server → Client: AcceptSecContext() → HandshakeInProgress or HandshakeDone
+//  4. [Optional] Client → Server: Continue until HandshakeDone
 //
 // Returns error if authentication fails.
 func (nns *NNSConnection) Authenticate() error {
@@ -640,10 +640,10 @@ func (nns *NNSConnection) fullUsername() string {
 func (nns *NNSConnection) resolveCCachePath() (string, error) {
 	path := strings.TrimSpace(nns.ccachePath)
 	if path == "" {
-		path = strings.TrimSpace(os.Getenv("KRB5_CCACHE"))
+		path = strings.TrimSpace(os.Getenv("KRB5CCNAME"))
 	}
 	if path == "" {
-		return "", fmt.Errorf("ccache credentials require CCachePath or KRB5_CCACHE environment variable")
+		return "", fmt.Errorf("ccache credentials require CCachePath or KRB5CCNAME environment variable")
 	}
 
 	if strings.HasPrefix(strings.ToUpper(path), "FILE:") {
@@ -725,8 +725,9 @@ func (nns *NNSConnection) targetHost() string {
 // Send sends data with optional signing and sealing using GSS-API Wrap.
 //
 // After authentication, NNS Data Messages have the format:
-//   [0:4]   PayloadSize (uint32, little-endian) - size of wrapped payload
-//   [4:.]   Payload (signed/encrypted data from GSS_Wrap)
+//
+//	[0:4]   PayloadSize (uint32, little-endian) - size of wrapped payload
+//	[4:.]   Payload (signed/encrypted data from GSS_Wrap)
 //
 // Uses GSS_Wrap from the negotiated security mechanism.
 func (nns *NNSConnection) Send(data []byte) error {
@@ -789,8 +790,9 @@ func (nns *NNSConnection) Send(data []byte) error {
 // Recv receives data with optional signature verification and unsealing using GSS-API Unwrap.
 //
 // After authentication, NNS Data Messages have the format:
-//   [0:4]   PayloadSize (uint32, little-endian)
-//   [4:.]   Payload (signed/encrypted data)
+//
+//	[0:4]   PayloadSize (uint32, little-endian)
+//	[4:.]   Payload (signed/encrypted data)
 //
 // Uses GSS_Unwrap from the negotiated security mechanism.
 func (nns *NNSConnection) Recv(buf []byte) (int, error) {
