@@ -27,6 +27,7 @@ import (
 	"github.com/oiweiwei/go-msrpc/ssp/krb5"
 	"github.com/oiweiwei/go-msrpc/ssp/ntlm"
 	"github.com/oiweiwei/go-msrpc/ssp/spnego"
+	krbclient "github.com/oiweiwei/gokrb5.fork/v9/client"
 	krbconfig "github.com/oiweiwei/gokrb5.fork/v9/config"
 	krbcredentials "github.com/oiweiwei/gokrb5.fork/v9/credentials"
 )
@@ -89,9 +90,37 @@ type NNSConnection struct {
 
 	ctx context.Context
 
+	// DNS/dial options used for KDC connections.
+	resolverOpts ResolverOptions
+
 	// Authentication state
 	authenticated bool
 }
+
+// WithResolverOptions sets the ResolverOptions used for all KDC TCP connections
+// made by this NNSConnection (Kerberos AS/TGS exchanges and PKINIT). It returns
+// the receiver so calls can be chained onto any New* constructor.
+func (nns *NNSConnection) WithResolverOptions(opts ResolverOptions) *NNSConnection {
+	nns.resolverOpts = opts
+	return nns
+}
+
+// kdcDialer implements client.KDCDialer using a net.Dialer backed by a custom
+// *net.Resolver so that KDC TCP connections honour ResolverOptions.
+type kdcDialer struct {
+	opts ResolverOptions
+}
+
+func (d kdcDialer) Dial(network, address string) (net.Conn, error) {
+	// client.KDCDialer has no context parameter, so context.Background() is the
+	// only option here. Cancellation of KDC exchanges must be handled by the
+	// gokrb5 client itself via its own deadline/timeout configuration.
+	dialer := &net.Dialer{Resolver: buildResolver(d.opts)}
+	return dialer.DialContext(context.Background(), network, address)
+}
+
+// Ensure kdcDialer satisfies the interface at compile time.
+var _ krbclient.KDCDialer = kdcDialer{}
 
 // NewNNSConnection creates an NNS connection over an established TCP socket using
 // password credentials. If targetSPN is empty, the SPN is derived as
@@ -284,7 +313,7 @@ func (nns *NNSConnection) Authenticate() error {
 		}
 		nns.debugf("credential=clientcert principal=%q kdc=%q", fullUsername, nns.targetHost())
 
-		ccachePath, err := PKINITAuthenticate(nns.ctx, nns.username, nns.domain, nns.targetHost(), nns.cert, nns.key)
+		ccachePath, err := PKINITAuthenticate(nns.ctx, nns.username, nns.domain, nns.targetHost(), nns.cert, nns.key, nns.resolverOpts)
 		if err != nil {
 			return fmt.Errorf("PKINIT AS exchange failed: %w", err)
 		}
@@ -701,6 +730,7 @@ func (nns *NNSConnection) buildKRB5Config() *krb5.Config {
 	krbCfg.DisablePAFXFAST = true
 	krbCfg.AnyServiceClassSPN = true
 	krbCfg.DCEStyle = false
+	krbCfg.KDCDialer = kdcDialer{opts: nns.resolverOpts}
 
 	return krbCfg
 }

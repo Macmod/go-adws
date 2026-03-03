@@ -15,15 +15,16 @@ import (
 	"os"
 	"strings"
 
+	"github.com/RedTeamPentesting/adauth"
 	"github.com/RedTeamPentesting/adauth/ccachetools"
 	"github.com/RedTeamPentesting/adauth/pkinit"
 	v8config "github.com/jcmturner/gokrb5/v8/config"
-	"golang.org/x/crypto/pkcs12"
 )
 
 // PKINITAuthenticate performs a PKINIT AS exchange against kdcHost:88,
 // returning the TGT as a temporary ccache file path. The caller must delete the file.
-func PKINITAuthenticate(ctx context.Context, username, domain, kdcHost string, cert *x509.Certificate, key *rsa.PrivateKey) (tempCCachePath string, err error) {
+// opts controls name resolution and TCP/UDP transport used to reach the KDC.
+func PKINITAuthenticate(ctx context.Context, username, domain, kdcHost string, cert *x509.Certificate, key *rsa.PrivateKey, opts ResolverOptions) (tempCCachePath string, err error) {
 	if username == "" {
 		return "", fmt.Errorf("PKINIT: username is required")
 	}
@@ -42,7 +43,9 @@ func PKINITAuthenticate(ctx context.Context, username, domain, kdcHost string, c
 		return "", fmt.Errorf("PKINIT: build KRB5 config: %w", err)
 	}
 
-	ccache, err := pkinit.Authenticate(ctx, username, realm, cert, key, cfg)
+	ccache, err := pkinit.Authenticate(ctx, username, realm, cert, key, cfg,
+		pkinit.WithDialer(&net.Dialer{Resolver: buildResolver(opts)}),
+	)
 	if err != nil {
 		return "", fmt.Errorf("PKINIT: AS exchange: %w", err)
 	}
@@ -67,21 +70,22 @@ func PKINITAuthenticate(ctx context.Context, username, domain, kdcHost string, c
 }
 
 // LoadPFX decodes a PKCS#12 (.pfx/.p12) file and returns the RSA private key
-// and certificate.
+// and certificate. It delegates to adauth.DecodePFX which correctly handles
+// the Microsoft-specific cert/chain ordering quirk in pkcs12.DecodeChain.
 func LoadPFX(pfxFile, password string) (*rsa.PrivateKey, *x509.Certificate, error) {
 	data, err := os.ReadFile(pfxFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read PFX file: %w", err)
 	}
 
-	privateKey, cert, err := pkcs12.Decode(data, password)
+	key, cert, _, err := adauth.DecodePFX(data, password)
 	if err != nil {
 		return nil, nil, fmt.Errorf("decode PFX: %w", err)
 	}
 
-	rsaKey, ok := privateKey.(*rsa.PrivateKey)
+	rsaKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
-		return nil, nil, fmt.Errorf("PFX key is %T, PKINIT requires RSA", privateKey)
+		return nil, nil, fmt.Errorf("PFX key is %T, PKINIT requires RSA", key)
 	}
 
 	return rsaKey, cert, nil
