@@ -7,8 +7,13 @@ import (
 	"strconv"
 )
 
+// DialFunc is a function that establishes a network connection, with the same
+// signature as net.Dialer.DialContext. Supply one to route connections through
+// a SOCKS5 proxy or any other custom transport.
+type DialFunc func(ctx context.Context, network, address string) (net.Conn, error)
+
 // ResolverOptions configures DNS resolution behaviour used for DC discovery
-// and for dialling the ADWS TCP connection.
+// and reverse lookups.
 type ResolverOptions struct {
 	// NameServer is an optional custom DNS server address (host or host:port).
 	// If empty, the system resolver is used.
@@ -20,18 +25,23 @@ type ResolverOptions struct {
 	// When NameServer is empty and UseTCP is true, the system-selected server
 	// is still contacted but via TCP.
 	UseTCP bool
+
+	// DialFunc, if non-nil, is used for DNS transport instead of a plain
+	// net.Dialer. Use this to route DNS queries through a SOCKS5 proxy.
+	DialFunc DialFunc
 }
 
 // buildResolver constructs a *net.Resolver from opts.
 //
 // Behaviour matrix:
 //
-//	NameServer=""  UseTCP=false  →  net.DefaultResolver (OS stub resolver)
-//	NameServer=""  UseTCP=true   →  pure-Go resolver, TCP to system-chosen server
-//	NameServer=X   UseTCP=false  →  pure-Go resolver, UDP  to X:53
-//	NameServer=X   UseTCP=true   →  pure-Go resolver, TCP  to X:53
+//	NameServer=""  UseTCP=false  DialFunc=nil  →  net.DefaultResolver (OS stub resolver)
+//	NameServer=""  UseTCP=true                 →  pure-Go resolver, TCP to system-chosen server
+//	NameServer=X   UseTCP=false               →  pure-Go resolver, UDP  to X:53
+//	NameServer=X   UseTCP=true                →  pure-Go resolver, TCP  to X:53
+//	DialFunc!=nil                             →  all of the above, via the provided dialer
 func buildResolver(opts ResolverOptions) *net.Resolver {
-	if opts.NameServer == "" && !opts.UseTCP {
+	if opts.NameServer == "" && !opts.UseTCP && opts.DialFunc == nil {
 		return net.DefaultResolver
 	}
 
@@ -52,12 +62,12 @@ func buildResolver(opts ResolverOptions) *net.Resolver {
 	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, _, address string) (net.Conn, error) {
-			// address is the server the Go resolver would normally contact.
-			// Override it with ns when a custom server was requested; otherwise
-			// forward to the system-chosen address but over TCP.
 			target := address
 			if ns != "" {
 				target = ns
+			}
+			if opts.DialFunc != nil {
+				return opts.DialFunc(ctx, network, target)
 			}
 			return (&net.Dialer{}).DialContext(ctx, network, target)
 		},
@@ -141,20 +151,31 @@ func DiscoverDC(ctx context.Context, domain string, opts ResolverOptions) (strin
 //
 // If port is 0, the default ADWS port 9389 is used.
 func DialADWS(ctx context.Context, host string, port int, opts ResolverOptions) (net.Conn, error) {
+	return DialADWSWithDialer(ctx, host, port, nil, opts)
+}
+
+// DialADWSWithDialer is like DialADWS but uses dialFn for the TCP connection
+// instead of a plain net.Dialer. Use this to route the connection through a
+// SOCKS5 proxy or other custom transport. DNS resolution still follows opts.
+func DialADWSWithDialer(ctx context.Context, host string, port int, dialFn DialFunc, opts ResolverOptions) (net.Conn, error) {
 	if port == 0 {
 		port = 9389
 	}
 
 	address := net.JoinHostPort(host, strconv.Itoa(port))
 
-	dialer := &net.Dialer{
-		Resolver: buildResolver(opts),
+	if dialFn != nil {
+		conn, err := dialFn(ctx, "tcp", address)
+		if err != nil {
+			return nil, fmt.Errorf("dial ADWS %s: %w", address, err)
+		}
+		return conn, nil
 	}
 
+	dialer := &net.Dialer{Resolver: buildResolver(opts)}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("dial ADWS %s: %w", address, err)
 	}
-
 	return conn, nil
 }
