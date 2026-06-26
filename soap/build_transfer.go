@@ -135,16 +135,21 @@ func BuildModifyRequest(operation, attr string, values []string, xsiType string)
 		xsiType = "xsd:string"
 	}
 
+	if op == "add" && len(values) == 0 {
+		return "", fmt.Errorf("values is required for add")
+	}
+
 	valuesXML := ""
 	for _, v := range values {
 		valuesXML += fmt.Sprintf("        <ad:value xsi:type=\"%s\">%s</ad:value>\n", escapeXML(xsiType), escapeXML(v))
 	}
 
+	// Per MS-WSTIM §3.2.4.2.3.1:
+	//   add:     AttributeValue required (checked above)
+	//   replace: AttributeValue optional / omitting removes all values
+	//   delete:  AttributeValue optional / omitting removes all values; present removes specific values
 	attrValueXML := ""
-	if op != "delete" {
-		if strings.TrimSpace(valuesXML) == "" {
-			return "", fmt.Errorf("values is required for %s", op)
-		}
+	if valuesXML != "" {
 		attrValueXML = fmt.Sprintf("      <da:AttributeValue>\n%s      </da:AttributeValue>\n", valuesXML)
 	}
 
