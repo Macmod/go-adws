@@ -38,6 +38,18 @@ type ADWSValue struct {
 	RawValue   []byte
 }
 
+// isBase64BinarySyntax reports whether the LdapSyntax sent by ADWS maps to
+// xsd:base64Binary per MS-ADDM §2.3.4.  Only four LDAP syntaxes produce
+// base64-encoded XML values: OctetString, SidString, NTSecurityDescriptor,
+// and ReplicaLink.
+func isBase64BinarySyntax(syntax string) bool {
+	switch syntax {
+	case "OctetString", "SidString", "NTSecurityDescriptor", "ReplicaLink":
+		return true
+	}
+	return false
+}
+
 func ParseEnumerateResponse(soapXML string) (*EnumerateResponse, error) {
 	var envelope Envelope
 	if err := xml.Unmarshal([]byte(soapXML), &envelope); err != nil {
@@ -80,11 +92,11 @@ func ParsePullResponse(soapXML string) (*PullResponse, error) {
 			values := make([]ADWSValue, 0, len(field.Values))
 			for _, val := range field.Values {
 				v := val.Content
-				if field.LdapSyntax == "OctetString" {
+				if isBase64BinarySyntax(field.LdapSyntax) {
 					v = strings.TrimSpace(v)
 				}
 				adwsVal := ADWSValue{Value: v, LdapSyntax: field.LdapSyntax}
-				if field.LdapSyntax == "OctetString" && adwsVal.Value != "" {
+				if isBase64BinarySyntax(field.LdapSyntax) && adwsVal.Value != "" {
 					decodedStr, rawBytes, err := decodeBinaryAttribute(fieldName, adwsVal.Value)
 					if err == nil {
 						adwsVal.Value = decodedStr
@@ -142,11 +154,11 @@ func ParseBaseObjectSearchResponse(soapXML string) (*ADWSItem, error) {
 			values := make([]ADWSValue, 0, len(field.Values))
 			for _, val := range field.Values {
 				v := val.Content
-				if field.LdapSyntax == "OctetString" {
+				if isBase64BinarySyntax(field.LdapSyntax) {
 					v = strings.TrimSpace(v)
 				}
 				adwsVal := ADWSValue{Value: v, LdapSyntax: field.LdapSyntax}
-				if field.LdapSyntax == "OctetString" && adwsVal.Value != "" {
+				if isBase64BinarySyntax(field.LdapSyntax) && adwsVal.Value != "" {
 					decodedStr, rawBytes, err := decodeBinaryAttribute(fieldName, adwsVal.Value)
 					if err == nil {
 						adwsVal.Value = decodedStr
